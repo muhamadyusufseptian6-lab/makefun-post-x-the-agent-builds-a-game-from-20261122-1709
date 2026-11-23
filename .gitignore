@@ -1,0 +1,10 @@
+video.mp4
+segA.mp4
+segB.mp4
+segC.mp4
+segD.mp4
+out/
+frames/
+press-manifest.json
+press-llms.txt
+endcard-16x9.mp4

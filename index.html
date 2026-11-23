@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One-Prompt Snake</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0b0f14;
+    color: #e8f5e9;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  h1 { font-size: 28px; letter-spacing: 2px; color: #7CFC66; }
+  h1 span { color: #ff5c8a; }
+  #hud {
+    width: 640px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  #hud .best { color: #ffd54a; }
+  canvas {
+    background: #101820;
+    border: 3px solid #2b3a4a;
+    border-radius: 10px;
+    box-shadow: 0 0 40px rgba(124, 252, 102, 0.12);
+  }
+  #hint { font-size: 15px; color: #8fa3b0; }
+  #hint b { color: #e8f5e9; }
+</style>
+</head>
+<body>
+  <h1>ONE-PROMPT <span>SNAKE</span></h1>
+  <div id="hud">
+    <div>🍎 Score: <span id="score">0</span></div>
+    <div class="best">🏆 Best: <span id="best">0</span></div>
+  </div>
+  <canvas id="game" width="640" height="480"></canvas>
+  <p id="hint"><b>Arrow keys / WASD</b> to steer &nbsp;·&nbsp; <b>Space</b> to start &nbsp;·&nbsp; <b>R</b> to restart</p>
+
+<script>
+"use strict";
+
+// One-Prompt Snake: arrow keys steer a snake that eats apples.
+// Score +1 per apple. Game over on wall or tail collision.
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const bestEl = document.getElementById("best");
+
+const CELL = 20;
+const COLS = canvas.width / CELL;   // 32
+const ROWS = canvas.height / CELL;  // 24
+const STEP_MS = 120;
+
+let snake, dir, pendingDir, apple, score, best, alive, started, timer;
+
+function randomCell() {
+  return {
+    x: Math.floor(Math.random() * COLS),
+    y: Math.floor(Math.random() * ROWS),
+  };
+}
+
+function placeApple() {
+  let cell;
+  do {
+    cell = randomCell();
+  } while (snake.some((s) => s.x === cell.x && s.y === cell.y));
+  apple = cell;
+}
+
+function reset() {
+  snake = [
+    { x: 8, y: 12 },
+    { x: 7, y: 12 },
+    { x: 6, y: 12 },
+  ];
+  dir = { x: 1, y: 0 };
+  pendingDir = dir;
+  score = 0;
+  alive = true;
+  started = false;
+  scoreEl.textContent = "0";
+  placeApple();
+  drawStart();
+}
+
+function start() {
+  if (started) return;
+  started = true;
+  clearInterval(timer);
+  timer = setInterval(tick, STEP_MS);
+}
+
+function tick() {
+  if (!alive) return;
+  dir = pendingDir;
+  const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+  const hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
+  const hitTail = snake.some((s) => s.x === head.x && s.y === head.y);
+  if (hitWall || hitTail) {
+    alive = false;
+    clearInterval(timer);
+    if (score > best) {
+      best = score;
+      bestEl.textContent = String(best);
+    }
+    drawGameOver();
+    return;
+  }
+
+  snake.unshift(head);
+  if (head.x === apple.x && head.y === apple.y) {
+    score += 1;
+    scoreEl.textContent = String(score);
+    placeApple();
+  } else {
+    snake.pop();
+  }
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle = "#101820";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // faint grid
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.lineWidth = 1;
+  for (let x = 1; x < COLS; x++) {
+    ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, canvas.height); ctx.stroke();
+  }
+  for (let y = 1; y < ROWS; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(canvas.width, y * CELL); ctx.stroke();
+  }
+
+  // apple
+  ctx.fillStyle = "#ff5c5c";
+  ctx.beginPath();
+  ctx.arc(apple.x * CELL + CELL / 2, apple.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#7CFC66";
+  ctx.fillRect(apple.x * CELL + CELL / 2 - 1, apple.y * CELL + 2, 3, 6);
+
+  // snake
+  snake.forEach((seg, i) => {
+    ctx.fillStyle = i === 0 ? "#a4ff8f" : "#4ecb3a";
+    const pad = i === 0 ? 1 : 2;
+    ctx.fillRect(seg.x * CELL + pad, seg.y * CELL + pad, CELL - pad * 2, CELL - pad * 2);
+  });
+  // eyes on the head
+  const h = snake[0];
+  ctx.fillStyle = "#0b0f14";
+  const ex = h.x * CELL + (dir.x === -1 ? 4 : dir.x === 1 ? 12 : 6);
+  const ey = h.y * CELL + (dir.y === -1 ? 4 : dir.y === 1 ? 12 : 6);
+  ctx.fillRect(ex, ey, 3, 3);
+  ctx.fillRect(ex + (dir.y !== 0 ? 6 : 0), ey + (dir.x !== 0 ? 6 : 0), 3, 3);
+}
+
+function overlay(title, sub) {
+  ctx.fillStyle = "rgba(11, 15, 20, 0.72)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#e8f5e9";
+  ctx.font = "bold 34px 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 8);
+  ctx.fillStyle = "#8fa3b0";
+  ctx.font = "20px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 30);
+}
+
+function drawStart() {
+  draw();
+  overlay("PRESS SPACE TO PLAY", "Arrow keys / WASD to steer · eat the apples");
+}
+
+function drawGameOver() {
+  draw();
+  overlay("GAME OVER — SCORE " + score, "Press R to play again");
+}
+
+const KEYS = {
+  ArrowUp: { x: 0, y: -1 }, KeyW: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 }, KeyS: { x: 0, y: 1 },
+  ArrowLeft: { x: -1, y: 0 }, KeyA: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 }, KeyD: { x: 1, y: 0 },
+};
+
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (!alive) { reset(); }
+    start();
+    return;
+  }
+  if (e.code === "KeyR") {
+    reset();
+    start();
+    return;
+  }
+  const next = KEYS[e.code];
+  if (!next) return;
+  e.preventDefault();
+  // never reverse straight into yourself
+  if (next.x === -dir.x && next.y === -dir.y) return;
+  pendingDir = next;
+  if (!started && alive) start();
+});
+
+// State exposed for automated play-testing (read-only snapshot).
+window.__game = {
+  get score() { return score; },
+  get best() { return best; },
+  get alive() { return alive; },
+  get started() { return started; },
+  get length() { return snake.length; },
+  get head() { return { x: snake[0].x, y: snake[0].y }; },
+  get dir() { return { x: dir.x, y: dir.y }; },
+  get apple() { return { x: apple.x, y: apple.y }; },
+  // Full body for automated play-testing (head first, tail last).
+  get body() { return snake.map((s) => ({ x: s.x, y: s.y })); },
+};
+
+best = 0;
+reset();
+</script>
+</body>
+</html>
